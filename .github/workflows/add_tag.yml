@@ -1,0 +1,63 @@
+name: Add Tag on Merge to Main
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: 'Specify version type (major, minor, patch)'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - major
+          - minor
+          - patch
+  push:
+    branches:
+      - main
+    types:
+      - closed
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Git
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+
+      - name: Get the current tag
+        id: current_tag
+        run: |
+          TAG=$(git describe --tags --abbrev=0)
+          echo "::set-output name=tag::$TAG"
+
+      - name: Create new tag
+        id: new_tag
+        run: |
+          VERSION_TYPE=${{ github.event.inputs.version_type }}
+          if [ -z "${{ steps.current_tag.outputs.tag }}" ]; then
+            NEW_TAG="1.0.0"
+          else
+            IFS='.' read -r -a VERSION_PARTS <<< "${{ steps.current_tag.outputs.tag }}"
+            MAJOR=${VERSION_PARTS[0]}
+            MINOR=${VERSION_PARTS[1]}
+            PATCH=${VERSION_PARTS[2]}
+            if [ "$VERSION_TYPE" == "major" ]; then
+              NEW_TAG="$((MAJOR + 1)).0.0"
+            elif [ "$VERSION_TYPE" == "minor" ]; then
+              NEW_TAG="$MAJOR.$((MINOR + 1)).0"
+            else
+              NEW_TAG="$MAJOR.$MINOR.$((PATCH + 1))"
+            fi
+          fi
+          echo "::set-output name=new_tag::$NEW_TAG"
+
+      - name: Push new tag to the repository
+        run: |
+          git tag -f ${{ steps.new_tag.outputs.new_tag }}
+          git push -f origin ${{ steps.new_tag.outputs.new_tag }}
